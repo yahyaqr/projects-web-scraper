@@ -12,14 +12,13 @@ const PORT = 3000;
 
 // Middleware
 app.use(bodyParser.json());
-app.use(express.static('public')); // Serve static files like index.html
+app.use(express.static('public'));
 
 // Configure multer for file uploads
 const upload = multer({ dest: 'uploads/' });
 
-// Scrape handler
 app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
-    const { goToInnerLinks, innerLinkSelector } = req.body;
+    const { goToInnerLinks, innerLinkSelector, maxData, dataPerFile, referer } = req.body;
 
     let dataSelectors;
     try {
@@ -32,69 +31,97 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
         return res.status(400).json({ error: 'Missing required parameters.' });
     }
 
+    const maxEntries = parseInt(maxData, 10) || 100;
+    const chunkSize = parseInt(dataPerFile, 10) || 50;
+    const dynamicReferer = referer || 'https://lpse.pu.go.id/eproc4/lelang/';
+
     try {
         const filePath = req.file.path;
         const fileContent = fs.readFileSync(filePath, 'utf8');
         const $ = cheerio.load(fileContent);
 
         let scrapedData = [];
+        const links = [];
 
+        // Collect links if goToInnerLinks is enabled
         if (goToInnerLinks === 'true' || goToInnerLinks === true) {
-            const links = $(innerLinkSelector)
+            $(innerLinkSelector)
                 .map((i, el) => $(el).attr('href'))
                 .get()
-                .filter(Boolean);
-
-            for (let link of links) {
-                try {
-                    let pageContent;
-
-                    if (link.startsWith('http')) {
-                        const response = await axios.get(link);
-                        pageContent = response.data;
+                .filter(Boolean)
+                .forEach(link => {
+                    // Convert relative links to absolute links using dynamic referer
+                    if (!link.startsWith('http')) {
+                        links.push(new URL(link, dynamicReferer).toString());
                     } else {
-                        console.warn(`Skipping relative URL: ${link}`);
-                        continue;
+                        links.push(link);
                     }
+                });
+        }
 
-                    const $$ = cheerio.load(pageContent);
-                    const pageData = {};
+        let progress = 0;
 
-                    for (let [name, selector] of Object.entries(dataSelectors)) {
-                        pageData[name] = $$(selector).text().trim() || 'N/A';
-                    }
-                    scrapedData.push(pageData);
-                } catch (innerError) {
-                    console.error(`Error processing inner link (${link}):`, innerError);
+        // Stream progress updates
+        res.setHeader('Content-Type', 'application/json');
+        res.write(JSON.stringify({ progress: 0 }) + "\n");
+
+        for (const [index, link] of links.entries()) {
+            if (scrapedData.length >= maxEntries) break;
+
+            try {
+                // Make request with dynamic Referer and User-Agent headers
+                const response = await axios.get(link, {
+                    headers: {
+                        'Referer': dynamicReferer,
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    },
+                });
+
+                const $$ = cheerio.load(response.data);
+                const pageData = {};
+
+                for (let [name, selector] of Object.entries(dataSelectors)) {
+                    pageData[name] = $$(selector).text().trim() || 'N/A';
                 }
-            }
-        } else {
-            const pageData = {};
 
-            for (let [name, selector] of Object.entries(dataSelectors)) {
-                pageData[name] = $(selector).text().trim() || 'N/A';
+                scrapedData.push(pageData);
+
+                // Save chunk of data if chunkSize is reached
+                if (scrapedData.length % chunkSize === 0) {
+                    saveChunk(scrapedData, index);
+                    scrapedData = [];
+                }
+            } catch (err) {
+                console.error(`Failed to fetch link (${link}):`, err.message);
+                continue;
             }
-            scrapedData.push(pageData);
+
+            // Update progress
+            progress = Math.round(((index + 1) / links.length) * 100);
+            res.write(JSON.stringify({ progress }) + "\n");
         }
 
-        if (scrapedData.length === 0) {
-            return res.status(500).json({ error: 'No data scraped. Check your selectors.' });
+        // Save remaining data
+        if (scrapedData.length > 0) saveChunk(scrapedData);
+
+        // End progress stream
+        res.write(JSON.stringify({ progress: 100, status: 'completed' }) + "\n");
+        res.end();
+
+        // Save a chunk of data to a file
+        function saveChunk(data, index = '') {
+            const workbook = XLSX.utils.book_new();
+            const worksheet = XLSX.utils.json_to_sheet(data);
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Scraped Data');
+            const filename = `scraped_data_chunk_${index}_${Date.now()}.xlsx`;
+            XLSX.writeFile(workbook, path.join('public', filename));
         }
 
-        // Save data to Excel
-        const workbook = XLSX.utils.book_new();
-        const worksheet = XLSX.utils.json_to_sheet(scrapedData);
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Scraped Data');
-        const outputFilename = `scraped_data_${Date.now()}.xlsx`;
-        XLSX.writeFile(workbook, path.join('public', outputFilename));
-
-        // Clean up the uploaded file
+        // Cleanup the uploaded file
         fs.unlinkSync(filePath);
-
-        return res.json({ filename: outputFilename });
     } catch (error) {
-        console.error('Error during scraping:', error);
-        return res.status(500).json({ error: 'An error occurred during scraping.' });
+        console.error('Scraping error:', error);
+        return res.status(500).json({ error: 'Scraping failed.' });
     }
 });
 

@@ -13,19 +13,44 @@
     <form id="scraperForm" enctype="multipart/form-data">
         <label for="htmlFile">Upload HTML file to scrape:</label>
         <input type="file" id="htmlFile" accept=".html,.htm" required>
+        <p>Upload an HTML file containing the data to scrape.</p>
 
         <label>
             <input type="checkbox" id="goToInnerLinks"> Go to links inside the uploaded file
         </label>
+        <p>Check this if you want to scrape additional links from the uploaded file.</p>
 
         <div id="innerLinkSelectorContainer" style="display: none;">
             <label for="innerLinkSelector">Selector for inner links:</label>
-            <input type="text" id="innerLinkSelector">
+            <input type="text" id="innerLinkSelector" placeholder="e.g., a.link-class">
+            <p>Enter the CSS selector for links to follow inside the uploaded file.</p>
         </div>
 
-        <h3>Data Selectors</h3>
-        <div id="selectorInputs"></div>
-        <button type="button" id="addSelector">Add Selector</button>
+        <div>
+            <label for="maxData">Max data to retrieve:</label>
+            <input type="number" id="maxData" value="100" min="1">
+            <p>Specify the maximum number of data entries to scrape.</p>
+        </div>
+
+        <div>
+            <label for="dataPerFile">Max data per file:</label>
+            <input type="number" id="dataPerFile" value="50" min="1">
+            <p>Set how many data entries should be saved per file.</p>
+        </div>
+
+        <h3>Data Headers and Selectors</h3>
+        <label for="dataHeaders">Data Headers (comma-separated):</label>
+        <textarea id="dataHeaders" rows="3"
+            placeholder="e.g., Nama Tender, Nilai Pagu Paket, Lokasi Pekerjaan, Pemenang" required></textarea>
+        <p>Enter the data headers separated by commas. Example: <i>Nama Tender, Nilai Pagu Paket, Lokasi Pekerjaan,
+                Pemenang</i>.</p>
+
+        <label for="dataSelectors">CSS Selectors (one per line):</label>
+        <textarea id="dataSelectors" rows="5"
+            placeholder="e.g.,&#10;tr:contains('Nama Tender') td strong&#10;tr:contains('Nilai Pagu Paket') td:nth-of-type(1)&#10;tr:contains('Lokasi Pekerjaan') ul li&#10;a.nav-link:contains('Pemenang')"
+            required></textarea>
+        <p>Enter the CSS selectors, one per line, corresponding to each header. The number of selectors must match the
+            number of headers.</p>
 
         <button type="submit">Start Scraping</button>
     </form>
@@ -47,6 +72,12 @@
         </tbody>
     </table>
 
+    <div id="progressContainer" style="margin-top: 20px; display: none;">
+        <label for="progressBar">Processing Progress:</label>
+        <progress id="progressBar" value="0" max="100" style="width: 100%;"></progress>
+        <span id="progressText">0%</span>
+    </div>
+
     <div id="result"></div>
     <div id="errorLog" style="margin-top: 20px; color: red;"></div>
 
@@ -54,71 +85,77 @@
         const form = document.getElementById('scraperForm');
         const goToInnerLinksCheckbox = document.getElementById('goToInnerLinks');
         const innerLinkSelectorContainer = document.getElementById('innerLinkSelectorContainer');
-        const selectorInputs = document.getElementById('selectorInputs');
-        const addSelectorButton = document.getElementById('addSelector');
         const previewTable = document.getElementById('previewTable');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
         const errorLogDiv = document.getElementById('errorLog');
 
-        // Toggle inner link selector input visibility
+        // Show or hide the inner link selector input
         goToInnerLinksCheckbox.addEventListener('change', function () {
             innerLinkSelectorContainer.style.display = this.checked ? 'block' : 'none';
-            updatePreview(); // Update preview when toggling
         });
 
-        // Add selector input fields dynamically
-        addSelectorButton.addEventListener('click', function () {
-            const selectorInput = document.createElement('div');
-            selectorInput.className = 'selectorInput';
-            selectorInput.innerHTML = `
-                <input type="text" placeholder="Selector name" required>
-                <input type="text" placeholder="CSS Selector" required>
-                <button type="button" onclick="this.parentElement.remove(); updatePreview();">Remove</button>
-            `;
-            selectorInputs.appendChild(selectorInput);
-            updatePreview();
-        });
+        form.addEventListener('submit', async function (e) {
+            e.preventDefault();
+            progressContainer.style.display = 'block';
+            progressBar.value = 0;
+            progressText.textContent = '0%';
 
-        // Update the preview table dynamically
-        function updatePreview() {
-            const headers = [];
-            document.querySelectorAll('.selectorInput input:nth-child(1)').forEach(input => {
-                if (input.value.trim()) {
-                    headers.push(input.value.trim());
-                }
-            });
+            const fileInput = document.getElementById('htmlFile');
+            const headersInput = document.getElementById('dataHeaders').value.split(',').map(header => header.trim());
+            const selectorsInput = document.getElementById('dataSelectors').value.split('\n').map(selector => selector.trim());
 
-            const thead = previewTable.querySelector('thead tr');
-            const tbody = previewTable.querySelector('tbody');
-            thead.innerHTML = ''; // Clear existing headers
-            tbody.innerHTML = ''; // Clear existing rows
+            if (headersInput.length !== selectorsInput.length) {
+                alert('The number of headers and selectors must match.');
+                return;
+            }
 
-            // Add "Links" column if "Go to inner links" is checked
+            const maxData = document.getElementById('maxData').value;
+            const dataPerFile = document.getElementById('dataPerFile').value;
+
+            if (fileInput.files.length === 0) {
+                alert('Please select an HTML file to upload.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('htmlFile', fileInput.files[0]);
+            formData.append('goToInnerLinks', goToInnerLinksCheckbox.checked);
+            formData.append('maxData', maxData);
+            formData.append('dataPerFile', dataPerFile);
+
             if (goToInnerLinksCheckbox.checked) {
-                headers.unshift('Links');
+                formData.append('innerLinkSelector', document.getElementById('innerLinkSelector').value);
             }
 
-            // Populate headers
-            headers.forEach(header => {
-                const th = document.createElement('th');
-                th.textContent = header;
-                thead.appendChild(th);
+            // Combine headers and selectors into an object
+            const dataSelectors = {};
+            headersInput.forEach((header, index) => {
+                dataSelectors[header] = selectorsInput[index];
             });
+            formData.append('dataSelectors', JSON.stringify(dataSelectors));
 
-            // Populate placeholder rows
-            for (let i = 0; i < 2; i++) {
-                const tr = document.createElement('tr');
-                headers.forEach((header, index) => {
-                    const td = document.createElement('td');
-                    // Add "Placeholder link" if the column is "Links"
-                    td.textContent = index === 0 && header === 'Links' ? 'Placeholder link' : 'Placeholder data';
-                    tr.appendChild(td);
+            try {
+                const response = await fetch('/scrape', {
+                    method: 'POST',
+                    body: formData,
                 });
-                tbody.appendChild(tr);
-            }
-        }
 
-        // Update preview table whenever input fields change
-        selectorInputs.addEventListener('input', updatePreview);
+                if (!response.ok) {
+                    const errorResponse = await response.json();
+                    throw new Error(errorResponse.error || 'Unknown error occurred.');
+                }
+
+                const result = await response.json();
+                result.forEach((progress, index) => {
+                    progressBar.value = progress.percentage;
+                    progressText.textContent = `${progress.percentage}%`;
+                });
+            } catch (error) {
+                errorLogDiv.textContent = `Error: ${error.message}`;
+            }
+        });
     </script>
 </body>
 
