@@ -80,12 +80,52 @@
         const tabsContent = document.getElementById('tabsContent');
         const addStepButton = document.getElementById('addStep');
         const errorLogDiv = document.getElementById('errorLog');
+        const previewTable = document.getElementById('previewTable');
+        const previewTableHead = previewTable.querySelector('thead tr');
         let stepCount = 1;
+
+        // Load saved input values from localStorage
+        function loadInputValues() {
+            document.querySelectorAll('input, textarea').forEach(element => {
+                const savedValue = localStorage.getItem(element.id);
+                if (savedValue !== null) {
+                    if (element.type === 'file') {
+                        // Skip setting value for file inputs
+                        return;
+                    } else if (element.type === 'checkbox') {
+                        element.checked = savedValue === 'true';
+                        // Show or hide linked elements for checkboxes
+                        if (element.classList.contains('goToInnerLinks')) {
+                            const innerLinkSelectorContainer = document.querySelector(`.innerLinkSelectorContainer`);
+                            innerLinkSelectorContainer.style.display = element.checked ? 'block' : 'none';
+                        }
+                    } else {
+                        element.value = savedValue;
+                    }
+                }
+            });
+        }
+
+        // Save input values to localStorage on blur
+        function saveInputValueOnBlur() {
+            document.querySelectorAll('input, textarea').forEach(element => {
+                element.addEventListener('blur', () => {
+                    if (element.type === 'checkbox') {
+                        localStorage.setItem(element.id, element.checked);
+                    } else {
+                        localStorage.setItem(element.id, element.value);
+                    }
+                    updatePreview(); // Update preview table on blur
+                });
+            });
+        }
 
         // Handle "Go to links inside this step" for Step 1
         document.querySelector('#goToInnerLinks_1').addEventListener('change', function () {
             const innerLinkSelectorContainer = document.querySelector('.innerLinkSelectorContainer');
             innerLinkSelectorContainer.style.display = this.checked ? 'block' : 'none';
+            localStorage.setItem(this.id, this.checked); // Save checkbox state
+            updatePreview(); // Update preview table
         });
 
         // Event listener to switch between tabs
@@ -136,9 +176,53 @@
             `;
             tabsContent.appendChild(newTabContent);
 
+            // Attach blur listeners to new inputs and textareas
+            saveInputValueOnBlur();
+
+            // Reload saved values for new elements if present in localStorage
+            loadInputValues();
+
             // Switch to the new tab
             newTab.click();
+
+            // Update preview table when a new step is added
+            updatePreview();
         });
+
+        // Update Mockup Preview table
+        function updatePreview() {
+            const steps = [];
+            document.querySelectorAll('.tabContent').forEach((step, index) => {
+                const stepNumber = index + 1;
+                const headers = step.querySelector(`#stepDataHeaders_${stepNumber}`).value
+                    .split(',')
+                    .map(h => h.trim())
+                    .filter(Boolean); // Filter out empty headers
+                steps.push({ headers, stepNumber });
+            });
+
+            // Clear previous headers
+            previewTableHead.innerHTML = '';
+
+            if (steps.length === 0 || steps.every(step => step.headers.length === 0)) {
+                // If no headers or steps, clear the table and return
+                const emptyRow = document.createElement('tr');
+                emptyRow.innerHTML = '<td colspan="1">No data available</td>';
+                previewTableHead.appendChild(emptyRow);
+                return;
+            }
+
+            // Create a single <tr> for headers
+            const headersRow = document.createElement('tr');
+            steps.forEach(({ headers, stepNumber }) => {
+                headers.forEach(header => {
+                    const th = document.createElement('th');
+                    th.textContent = header ? `${header} (Step ${stepNumber})` : `(Step ${stepNumber})`;
+                    headersRow.appendChild(th);
+                });
+            });
+            previewTableHead.appendChild(headersRow);
+        }
 
         // Submit form logic
         form.addEventListener('submit', async function (e) {
@@ -190,8 +274,14 @@
                 errorLogDiv.style.display = 'block';
             }
         });
-    </script>
 
+        // Initial preview update
+        updatePreview();
+
+        // Load saved values and attach listeners
+        loadInputValues();
+        saveInputValueOnBlur();
+    </script>
 </body>
 
 </html>

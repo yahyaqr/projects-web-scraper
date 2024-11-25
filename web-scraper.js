@@ -17,6 +17,19 @@ app.use(express.static('public'));
 // Configure multer for file uploads
 const upload = multer({ dest: 'uploads/' });
 
+// Helper function to merge step data into a single row
+function mergeStepData(currentData, newData, stepIndex) {
+    return currentData.map((row, index) => {
+        const mergedRow = { ...row };
+        if (newData[index]) {
+            for (const key in newData[index]) {
+                mergedRow[`${key}_step${stepIndex}`] = newData[index][key];
+            }
+        }
+        return mergedRow;
+    });
+}
+
 // Scrape handler
 app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
     let steps;
@@ -31,7 +44,6 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
     }
 
     const maxData = parseInt(req.body.maxData, 10) || 100;
-    const chunkSize = parseInt(req.body.dataPerFile, 10) || 50;
 
     try {
         const filePath = req.file.path;
@@ -56,7 +68,7 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
                     .map(link => (!link.startsWith('http') ? new URL(link, dynamicReferer).toString() : link));
             } else if (stepIndex > 0 && innerLinkSelector) {
                 // For subsequent steps, collect links from the previous scraped data
-                const previousLinks = scrapedData.map(d => d._link).filter(Boolean);
+                const previousLinks = scrapedData.map(d => d[`_link_step${stepIndex}`] || d._link).filter(Boolean);
                 links = [];
                 for (const prevLink of previousLinks) {
                     try {
@@ -92,7 +104,7 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
                         },
                     });
                     const $$ = cheerio.load(response.data);
-                    const pageData = { _link: link };
+                    const pageData = { [`_link_step${stepIndex + 1}`]: link };
 
                     headers.forEach((header, index) => {
                         pageData[header] = $$(selectors[index]).text().trim() || 'N/A';
@@ -106,18 +118,16 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
                 }
             }
 
-            // Append scraped data from the current step
-            scrapedData = scrapedData.concat(stepData);
-
-            // Save data in chunks
-            if (scrapedData.length >= chunkSize) {
-                saveChunk(scrapedData);
-                scrapedData = [];
+            // Merge the current step's data with the previous data
+            if (stepIndex === 0) {
+                scrapedData = stepData;
+            } else {
+                scrapedData = mergeStepData(scrapedData, stepData, stepIndex + 1);
             }
         }
 
-        // Save any remaining data
-        if (scrapedData.length > 0) saveChunk(scrapedData);
+        // Save the final data
+        saveChunk(scrapedData);
 
         res.json({ status: 'completed', message: 'Scraping completed successfully' });
 
