@@ -71,7 +71,6 @@
         </tbody>
     </table>
 
-    <div id="result"></div>
     <div id="errorLog" style="margin-top: 20px; color: red;"></div>
 
     <script>
@@ -84,17 +83,25 @@
         const previewTableHead = previewTable.querySelector('thead tr');
         let stepCount = 1;
 
+        // Logging function
+        function logMessage(message, isError = false) {
+            const logEntry = document.createElement('p');
+            logEntry.textContent = message;
+            logEntry.style.color = isError ? 'red' : 'black';
+            errorLogDiv.appendChild(logEntry);
+            errorLogDiv.scrollTop = errorLogDiv.scrollHeight; // Auto-scroll to the latest message
+            console[isError ? 'error' : 'log'](message);
+        }
+
         // Load saved input values from localStorage
         function loadInputValues() {
             document.querySelectorAll('input, textarea').forEach(element => {
                 const savedValue = localStorage.getItem(element.id);
                 if (savedValue !== null) {
                     if (element.type === 'file') {
-                        // Skip setting value for file inputs
-                        return;
+                        return; // Skip setting value for file inputs
                     } else if (element.type === 'checkbox') {
                         element.checked = savedValue === 'true';
-                        // Show or hide linked elements for checkboxes
                         if (element.classList.contains('goToInnerLinks')) {
                             const innerLinkSelectorContainer = document.querySelector(`.innerLinkSelectorContainer`);
                             innerLinkSelectorContainer.style.display = element.checked ? 'block' : 'none';
@@ -116,6 +123,7 @@
                         localStorage.setItem(element.id, element.value);
                     }
                     updatePreview(); // Update preview table on blur
+                    logMessage(`Saved input: ${element.id} = ${element.type === 'checkbox' ? element.checked : element.value}`);
                 });
             });
         }
@@ -126,6 +134,7 @@
             innerLinkSelectorContainer.style.display = this.checked ? 'block' : 'none';
             localStorage.setItem(this.id, this.checked); // Save checkbox state
             updatePreview(); // Update preview table
+            logMessage(`Go to inner links checkbox changed: ${this.checked}`);
         });
 
         // Event listener to switch between tabs
@@ -133,15 +142,15 @@
             if (e.target.tagName === 'LI' && e.target.classList.contains('tab')) {
                 const step = e.target.dataset.step;
 
-                // Highlight selected tab
                 document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
                 e.target.classList.add('active');
 
-                // Show corresponding tab content
                 document.querySelectorAll('.tabContent').forEach(content => {
                     content.classList.remove('active');
                 });
                 document.querySelector(`.tabContent[data-step="${step}"]`).classList.add('active');
+
+                logMessage(`Switched to Step ${step}`);
             }
         });
 
@@ -149,14 +158,12 @@
         addStepButton.addEventListener('click', () => {
             stepCount++;
 
-            // Add new tab
             const newTab = document.createElement('li');
             newTab.classList.add('tab');
             newTab.dataset.step = stepCount;
             newTab.textContent = `Step ${stepCount}`;
             tabsList.appendChild(newTab);
 
-            // Add content for the new tab
             const newTabContent = document.createElement('div');
             newTabContent.classList.add('tabContent');
             newTabContent.dataset.step = stepCount;
@@ -176,17 +183,12 @@
             `;
             tabsContent.appendChild(newTabContent);
 
-            // Attach blur listeners to new inputs and textareas
             saveInputValueOnBlur();
-
-            // Reload saved values for new elements if present in localStorage
             loadInputValues();
-
-            // Switch to the new tab
             newTab.click();
 
-            // Update preview table when a new step is added
             updatePreview();
+            logMessage(`Added new step: Step ${stepCount}`);
         });
 
         // Update Mockup Preview table
@@ -197,22 +199,20 @@
                 const headers = step.querySelector(`#stepDataHeaders_${stepNumber}`).value
                     .split(',')
                     .map(h => h.trim())
-                    .filter(Boolean); // Filter out empty headers
+                    .filter(Boolean);
                 steps.push({ headers, stepNumber });
             });
 
-            // Clear previous headers
             previewTableHead.innerHTML = '';
 
             if (steps.length === 0 || steps.every(step => step.headers.length === 0)) {
-                // If no headers or steps, clear the table and return
                 const emptyRow = document.createElement('tr');
                 emptyRow.innerHTML = '<td colspan="1">No data available</td>';
                 previewTableHead.appendChild(emptyRow);
+                logMessage('Preview updated: No data available');
                 return;
             }
 
-            // Create a single <tr> for headers
             const headersRow = document.createElement('tr');
             steps.forEach(({ headers, stepNumber }) => {
                 headers.forEach(header => {
@@ -222,15 +222,16 @@
                 });
             });
             previewTableHead.appendChild(headersRow);
+
+            logMessage('Preview table updated.');
         }
 
-        // Submit form logic
         form.addEventListener('submit', async function (e) {
             e.preventDefault();
 
             const fileInput = document.getElementById('htmlFile');
             if (fileInput.files.length === 0) {
-                alert('Please select an HTML file to upload.');
+                logMessage('No HTML file selected.', true);
                 return;
             }
 
@@ -242,7 +243,7 @@
                 const innerLinkSelector = step.querySelector(`#innerLinkSelector_${stepNumber}`)?.value || null;
 
                 if (headers.length !== selectors.length) {
-                    alert(`The number of headers and selectors must match in Step ${stepNumber}.`);
+                    logMessage(`Step ${stepNumber}: Headers and selectors count mismatch.`, true);
                     return;
                 }
 
@@ -254,6 +255,7 @@
             formData.append('steps', JSON.stringify(steps));
 
             try {
+                logMessage('Starting scraping...');
                 const response = await fetch('/scrape', {
                     method: 'POST',
                     body: formData,
@@ -261,26 +263,21 @@
 
                 if (!response.ok) {
                     const errorText = await response.text();
-                    console.error('Server error response:', errorText);
-                    throw new Error('Failed to fetch valid JSON response from server.');
+                    logMessage(`Server error: ${errorText}`, true);
+                    return;
                 }
 
                 const result = await response.json();
-                console.log('Scraping completed successfully.', result);
+                logMessage('Scraping completed successfully.');
+                logMessage(JSON.stringify(result));
             } catch (error) {
-                const errorMessage = `Error: ${error.message || 'An unknown error occurred.'}`;
-                console.error(errorMessage);
-                errorLogDiv.textContent = errorMessage;
-                errorLogDiv.style.display = 'block';
+                logMessage(`Error: ${error.message}`, true);
             }
         });
 
-        // Initial preview update
-        updatePreview();
-
-        // Load saved values and attach listeners
         loadInputValues();
         saveInputValueOnBlur();
+        updatePreview();
     </script>
 </body>
 

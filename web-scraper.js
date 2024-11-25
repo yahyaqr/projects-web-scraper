@@ -33,25 +33,29 @@ function mergeStepData(currentData, newData, stepIndex) {
 // Scrape handler
 app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
     let steps;
+    const errorLog = [];
     try {
         steps = JSON.parse(req.body.steps);
     } catch (e) {
-        return res.status(400).json({ error: 'Invalid steps format.' });
+        logMessage('Error parsing steps: Invalid steps format.', true);
+        return res.status(400).json({ error: 'Invalid steps format.', logs: errorLog });
     }
 
     if (!req.file || !steps || steps.length === 0) {
-        return res.status(400).json({ error: 'Missing required parameters or steps.' });
+        logMessage('Missing required parameters or steps.', true);
+        return res.status(400).json({ error: 'Missing required parameters or steps.', logs: errorLog });
     }
 
     const maxData = parseInt(req.body.maxData, 10) || 100;
 
     try {
+        logMessage('Starting scraping process.');
         const filePath = req.file.path;
         const fileContent = fs.readFileSync(filePath, 'utf8');
         let $ = cheerio.load(fileContent);
 
         let scrapedData = [];
-        const dynamicReferer = req.body.referer || 'https://lpse.pu.go.id/eproc4/lelang'; // Correct base referer
+        const dynamicReferer = req.body.referer || 'https://lpse.pu.go.id/eproc4/lelang';
 
         // Recursive scraping for each step
         for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
@@ -61,14 +65,17 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
             let links = [];
             if (stepIndex === 0 && innerLinkSelector) {
                 // Collect initial links from the uploaded file
+                logMessage(`Step ${stepIndex + 1}: Collecting initial links using selector '${innerLinkSelector}'.`);
                 links = $(innerLinkSelector)
                     .map((i, el) => $(el).attr('href'))
                     .get()
                     .filter(Boolean)
                     .map(link => (!link.startsWith('http') ? new URL(link, dynamicReferer).toString() : link));
+                logMessage(`Step ${stepIndex + 1}: Found ${links.length} links.`);
             } else if (stepIndex > 0 && innerLinkSelector) {
-                // For subsequent steps, collect links from the previous scraped data
+                // Collect links from previous step's data
                 const previousLinks = scrapedData.map(d => d[`_link_step${stepIndex}`] || d._link).filter(Boolean);
+                logMessage(`Step ${stepIndex + 1}: Processing ${previousLinks.length} previous links.`);
                 links = [];
                 for (const prevLink of previousLinks) {
                     try {
@@ -87,8 +94,9 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
                                 .filter(Boolean)
                                 .map(link => (!link.startsWith('http') ? new URL(link, dynamicReferer).toString() : link))
                         );
+                        logMessage(`Step ${stepIndex + 1}: Found ${links.length} links from page ${prevLink}.`);
                     } catch (err) {
-                        console.error(`Failed to fetch link (${prevLink}):`, err.message);
+                        logMessage(`Error fetching link (${prevLink}): ${err.message}`, true);
                     }
                 }
             }
@@ -96,6 +104,7 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
             const stepData = [];
             for (const link of links) {
                 try {
+                    logMessage(`Fetching link: ${link}`);
                     const response = await axios.get(link, {
                         headers: {
                             'Referer': dynamicReferer,
@@ -103,18 +112,28 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
                                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                         },
                     });
+            
                     const $$ = cheerio.load(response.data);
                     const pageData = { [`_link_step${stepIndex + 1}`]: link };
-
+            
                     headers.forEach((header, index) => {
-                        pageData[header] = $$(selectors[index]).text().trim() || 'N/A';
+                        const extractedData = $$(selectors[index]).text().trim();
+                        if (!extractedData) {
+                            const pageSnippet = $$('body').html().substring(0, 500);
+                            logMessage(
+                                `Warning: No data found for header '${header}' using selector '${selectors[index]}' on page ${link}`,
+                                true
+                            );
+                            logMessage(`Page snippet: ${pageSnippet}`, true);
+                        }
+                        pageData[header] = extractedData || 'N/A';
                     });
-
+            
                     stepData.push(pageData);
-
+            
                     if (stepData.length >= maxData) break;
                 } catch (err) {
-                    console.error(`Failed to fetch link (${link}):`, err.message);
+                    logMessage(`Error fetching link (${link}): ${err.message}`, true);
                 }
             }
 
@@ -129,7 +148,8 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
         // Save the final data
         saveChunk(scrapedData);
 
-        res.json({ status: 'completed', message: 'Scraping completed successfully' });
+        logMessage('Scraping completed successfully.');
+        res.json({ status: 'completed', message: 'Scraping completed successfully', logs: errorLog });
 
         // Function to save data to a file
         function saveChunk(data) {
@@ -143,10 +163,19 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
         // Cleanup the uploaded file
         fs.unlinkSync(filePath);
     } catch (error) {
-        console.error('Scraping error:', error);
-        return res.status(500).json({ error: 'Scraping failed.' });
+        logMessage(`Scraping error: ${error.message}`, true);
+        res.status(500).json({ error: 'Scraping failed.', logs: errorLog });
+    }
+
+    // Helper function for logging
+    function logMessage(message, isError = false) {
+        const timestamp = new Date().toISOString();
+        const formattedMessage = `${timestamp} - ${isError ? '[ERROR]' : '[INFO]'}: ${message}`;
+        console.log(formattedMessage);
+        errorLog.push(formattedMessage);
     }
 });
+
 
 // Start server
 app.listen(PORT, () => {
