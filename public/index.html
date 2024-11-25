@@ -1,97 +1,51 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Web Scraper</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        h1 {
-            color: #2c3e50;
-            text-align: center;
-        }
-        form {
-            background: #f4f7f8;
-            border-radius: 8px;
-            padding: 20px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-        }
-        input[type="text"], input[type="url"] {
-            width: 100%;
-            padding: 8px;
-            margin-bottom: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        button {
-            background-color: #3498db;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #2980b9;
-        }
-        #selectorInputs {
-            margin-top: 10px;
-        }
-        .selectorInput {
-            display: flex;
-            margin-bottom: 10px;
-        }
-        .selectorInput input {
-            flex: 1;
-            margin-right: 10px;
-        }
-        #addSelector {
-            background-color: #2ecc71;
-        }
-        #addSelector:hover {
-            background-color: #27ae60;
-        }
-        #result {
-            margin-top: 20px;
-            padding: 10px;
-            background-color: #ecf0f1;
-            border-radius: 4px;
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css" type="text/css">
 </head>
+
 <body>
     <h1>Web Scraper</h1>
-    <form id="scraperForm">
-        <label for="url">URL to scrape:</label>
-        <input type="url" id="url" required>
-        
+    <form id="scraperForm" enctype="multipart/form-data">
+        <label for="htmlFile">Upload HTML file to scrape:</label>
+        <input type="file" id="htmlFile" accept=".html,.htm" required>
+
         <label>
-            <input type="checkbox" id="goToInnerLinks"> Go to links inside the given link
+            <input type="checkbox" id="goToInnerLinks"> Go to links inside the uploaded file
         </label>
-        
+
         <div id="innerLinkSelectorContainer" style="display: none;">
             <label for="innerLinkSelector">Selector for inner links:</label>
             <input type="text" id="innerLinkSelector">
         </div>
-        
+
         <h3>Data Selectors</h3>
         <div id="selectorInputs"></div>
         <button type="button" id="addSelector">Add Selector</button>
-        
+
         <button type="submit">Start Scraping</button>
     </form>
-    
-    <div id="result"></div>
+
+    <h3>Mockup Preview</h3>
+    <table id="previewTable" border="1" style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+        <thead>
+            <tr>
+                <!-- Headers will be added dynamically -->
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <!-- Placeholder row 1 -->
+            </tr>
+            <tr>
+                <!-- Placeholder row 2 -->
+            </tr>
+        </tbody>
+    </table>
 
     <div id="result"></div>
     <div id="errorLog" style="margin-top: 20px; color: red;"></div>
@@ -102,60 +56,70 @@
         const innerLinkSelectorContainer = document.getElementById('innerLinkSelectorContainer');
         const selectorInputs = document.getElementById('selectorInputs');
         const addSelectorButton = document.getElementById('addSelector');
-        const resultDiv = document.getElementById('result');
+        const previewTable = document.getElementById('previewTable');
+        const errorLogDiv = document.getElementById('errorLog');
 
-        goToInnerLinksCheckbox.addEventListener('change', function() {
+        // Toggle inner link selector input visibility
+        goToInnerLinksCheckbox.addEventListener('change', function () {
             innerLinkSelectorContainer.style.display = this.checked ? 'block' : 'none';
+            updatePreview(); // Update preview when toggling
         });
 
-        addSelectorButton.addEventListener('click', function() {
+        // Add selector input fields dynamically
+        addSelectorButton.addEventListener('click', function () {
             const selectorInput = document.createElement('div');
             selectorInput.className = 'selectorInput';
             selectorInput.innerHTML = `
                 <input type="text" placeholder="Selector name" required>
                 <input type="text" placeholder="CSS Selector" required>
-                <button type="button" onclick="this.parentElement.remove()">Remove</button>
+                <button type="button" onclick="this.parentElement.remove(); updatePreview();">Remove</button>
             `;
             selectorInputs.appendChild(selectorInput);
+            updatePreview();
         });
 
-        form.addEventListener('submit', async function (e) {
-            e.preventDefault();
-            const formData = {
-                url: document.getElementById('url').value,
-                goToInnerLinks: goToInnerLinksCheckbox.checked,
-                innerLinkSelector: document.getElementById('innerLinkSelector').value,
-                dataSelectors: {},
-            };
-
-            document.querySelectorAll('.selectorInput').forEach((input) => {
-                const [nameInput, selectorInput] = input.querySelectorAll('input');
-                formData.dataSelectors[nameInput.value] = selectorInput.value;
+        // Update the preview table dynamically
+        function updatePreview() {
+            const headers = [];
+            document.querySelectorAll('.selectorInput input:nth-child(1)').forEach(input => {
+                if (input.value.trim()) {
+                    headers.push(input.value.trim());
+                }
             });
 
-            resultDiv.textContent = 'Scraping in progress...';
-            document.getElementById('errorLog').textContent = ''; // Clear previous error logs
+            const thead = previewTable.querySelector('thead tr');
+            const tbody = previewTable.querySelector('tbody');
+            thead.innerHTML = ''; // Clear existing headers
+            tbody.innerHTML = ''; // Clear existing rows
 
-            try {
-                const response = await fetch('/scrape', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(formData),
-                });
-
-                if (!response.ok) {
-                    const errorResponse = await response.json();
-                    throw new Error(errorResponse.error || 'Unknown error occurred.');
-                }
-
-                const result = await response.json();
-                resultDiv.textContent = `Scraping completed. Data saved to ${result.filename}`;
-            } catch (error) {
-                document.getElementById('errorLog').textContent = `Error: ${error.message}`;
+            // Add "Links" column if "Go to inner links" is checked
+            if (goToInnerLinksCheckbox.checked) {
+                headers.unshift('Links');
             }
-        });
+
+            // Populate headers
+            headers.forEach(header => {
+                const th = document.createElement('th');
+                th.textContent = header;
+                thead.appendChild(th);
+            });
+
+            // Populate placeholder rows
+            for (let i = 0; i < 2; i++) {
+                const tr = document.createElement('tr');
+                headers.forEach((header, index) => {
+                    const td = document.createElement('td');
+                    // Add "Placeholder link" if the column is "Links"
+                    td.textContent = index === 0 && header === 'Links' ? 'Placeholder link' : 'Placeholder data';
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            }
+        }
+
+        // Update preview table whenever input fields change
+        selectorInputs.addEventListener('input', updatePreview);
     </script>
 </body>
+
 </html>
