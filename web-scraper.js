@@ -19,103 +19,114 @@ const upload = multer({ dest: 'uploads/' });
 
 // Scrape handler
 app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
-    const { goToInnerLinks, innerLinkSelector, maxData, dataPerFile, referer } = req.body;
-
-    let dataSelectors;
+    let steps;
     try {
-        dataSelectors = JSON.parse(req.body.dataSelectors);
+        steps = JSON.parse(req.body.steps);
     } catch (e) {
-        return res.status(400).json({ error: 'Invalid data selectors format.' });
+        return res.status(400).json({ error: 'Invalid steps format.' });
     }
 
-    if (!req.file || !dataSelectors) {
-        return res.status(400).json({ error: 'Missing required parameters.' });
+    if (!req.file || !steps || steps.length === 0) {
+        return res.status(400).json({ error: 'Missing required parameters or steps.' });
     }
 
-    const maxEntries = parseInt(maxData, 10) || 100;
-    const chunkSize = parseInt(dataPerFile, 10) || 50;
+    const maxData = parseInt(req.body.maxData, 10) || 100;
+    const chunkSize = parseInt(req.body.dataPerFile, 10) || 50;
 
     try {
         const filePath = req.file.path;
         const fileContent = fs.readFileSync(filePath, 'utf8');
-        const $ = cheerio.load(fileContent);
+        let $ = cheerio.load(fileContent);
 
         let scrapedData = [];
-        const links = [];
-        const dynamicReferer = referer || 'http://localhost'; // Fallback referer
+        const dynamicReferer = req.body.referer || 'https://lpse.pu.go.id/eproc4/lelang'; // Correct base referer
 
-        // Collect links if goToInnerLinks is enabled
-        if (goToInnerLinks === 'true' || goToInnerLinks === true) {
-            $(innerLinkSelector)
-                .map((i, el) => $(el).attr('href'))
-                .get()
-                .filter(Boolean)
-                .forEach(link => {
-                    // Convert relative links to absolute links
-                    if (!link.startsWith('http')) {
-                        links.push(new URL(link, dynamicReferer).toString());
-                    } else {
-                        links.push(link);
+        // Recursive scraping for each step
+        for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+            const step = steps[stepIndex];
+            const { headers, selectors, innerLinkSelector } = step;
+
+            let links = [];
+            if (stepIndex === 0 && innerLinkSelector) {
+                // Collect initial links from the uploaded file
+                links = $(innerLinkSelector)
+                    .map((i, el) => $(el).attr('href'))
+                    .get()
+                    .filter(Boolean)
+                    .map(link => (!link.startsWith('http') ? new URL(link, dynamicReferer).toString() : link));
+            } else if (stepIndex > 0 && innerLinkSelector) {
+                // For subsequent steps, collect links from the previous scraped data
+                const previousLinks = scrapedData.map(d => d._link).filter(Boolean);
+                links = [];
+                for (const prevLink of previousLinks) {
+                    try {
+                        const response = await axios.get(prevLink, {
+                            headers: {
+                                'Referer': dynamicReferer,
+                                'User-Agent':
+                                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                            },
+                        });
+                        const $$ = cheerio.load(response.data);
+                        links.push(
+                            ...$$(`${innerLinkSelector}`)
+                                .map((i, el) => $$(el).attr('href'))
+                                .get()
+                                .filter(Boolean)
+                                .map(link => (!link.startsWith('http') ? new URL(link, dynamicReferer).toString() : link))
+                        );
+                    } catch (err) {
+                        console.error(`Failed to fetch link (${prevLink}):`, err.message);
                     }
-                });
-        }
-
-        let progress = 0;
-
-        // Set response headers for streaming JSON
-        res.setHeader('Content-Type', 'application/json');
-        res.write('[\n'); // Start JSON array
-
-        for (const [index, link] of links.entries()) {
-            if (scrapedData.length >= maxEntries) break;
-
-            try {
-                // Make request with dynamic Referer and User-Agent headers
-                const response = await axios.get(link, {
-                    headers: {
-                        'Referer': dynamicReferer,
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                    },
-                });
-
-                const $$ = cheerio.load(response.data);
-                const pageData = {};
-
-                for (let [name, selector] of Object.entries(dataSelectors)) {
-                    pageData[name] = $$(selector).text().trim() || 'N/A';
                 }
-
-                scrapedData.push(pageData);
-
-                // Save chunk of data if chunkSize is reached
-                if (scrapedData.length % chunkSize === 0) {
-                    saveChunk(scrapedData, index);
-                    scrapedData = [];
-                }
-            } catch (err) {
-                console.error(`Failed to fetch link (${link}):`, err.message);
-                continue; // Skip this link and proceed to the next
             }
 
-            // Update progress
-            progress = Math.round(((index + 1) / links.length) * 100);
-            res.write(`${JSON.stringify({ progress })}${index < links.length - 1 ? ',' : ''}\n`);
+            const stepData = [];
+            for (const link of links) {
+                try {
+                    const response = await axios.get(link, {
+                        headers: {
+                            'Referer': dynamicReferer,
+                            'User-Agent':
+                                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                        },
+                    });
+                    const $$ = cheerio.load(response.data);
+                    const pageData = { _link: link };
+
+                    headers.forEach((header, index) => {
+                        pageData[header] = $$(selectors[index]).text().trim() || 'N/A';
+                    });
+
+                    stepData.push(pageData);
+
+                    if (stepData.length >= maxData) break;
+                } catch (err) {
+                    console.error(`Failed to fetch link (${link}):`, err.message);
+                }
+            }
+
+            // Append scraped data from the current step
+            scrapedData = scrapedData.concat(stepData);
+
+            // Save data in chunks
+            if (scrapedData.length >= chunkSize) {
+                saveChunk(scrapedData);
+                scrapedData = [];
+            }
         }
 
-        // Save remaining data
+        // Save any remaining data
         if (scrapedData.length > 0) saveChunk(scrapedData);
 
-        // End progress stream
-        res.write('{"progress":100, "status":"completed"}\n');
-        res.write(']\n'); // End JSON array
-        res.end();
+        res.json({ status: 'completed', message: 'Scraping completed successfully' });
 
-        // Function to save a chunk of scraped data to a file
-        function saveChunk(data, index = '') {
+        // Function to save data to a file
+        function saveChunk(data) {
             const workbook = XLSX.utils.book_new();
             const worksheet = XLSX.utils.json_to_sheet(data);
             XLSX.utils.book_append_sheet(workbook, worksheet, 'Scraped Data');
-            const filename = `scraped_data_chunk_${index}_${Date.now()}.xlsx`;
+            const filename = `scraped_data_${Date.now()}.xlsx`;
             XLSX.writeFile(workbook, path.join('public', filename));
         }
 

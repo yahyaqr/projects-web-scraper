@@ -15,58 +15,42 @@
         <input type="file" id="htmlFile" accept=".html,.htm" required>
         <p>Upload an HTML file containing the data to scrape.</p>
 
-        <label>
-            <input type="checkbox" id="goToInnerLinks"> Go to links inside the uploaded file
-        </label>
-        <p>Check this if you want to scrape additional links from the uploaded file.</p>
+        <h3>Scraping Steps</h3>
 
-        <div id="innerLinkSelectorContainer" style="display: none;">
-            <label for="innerLinkSelector">Selector for inner links:</label>
-            <input type="text" id="innerLinkSelector" placeholder="e.g., a.link-class">
-            <p>Enter the CSS selector for links to follow inside the uploaded file.</p>
+        <!-- Tabs for steps -->
+        <div id="stepsTabs">
+            <ul id="tabsList">
+                <li class="tab active" data-step="1">Step 1</li>
+            </ul>
+            <div id="tabsContent">
+                <!-- Content for Step 1 -->
+                <div class="tabContent active" data-step="1">
+                    <h4>Step 1</h4>
+                    <label>
+                        <input type="checkbox" id="goToInnerLinks_1" class="goToInnerLinks" data-step="1">
+                        Go to links inside this step
+                    </label>
+
+                    <div class="innerLinkSelectorContainer" style="display: none;">
+                        <label for="innerLinkSelector_1">Selector for inner links:</label>
+                        <input type="text" id="innerLinkSelector_1" placeholder="e.g., a.link-class">
+                        <p>Enter the CSS selector for links to follow inside this step.</p>
+                    </div>
+
+                    <label for="stepDataHeaders_1">Data Headers (comma-separated):</label>
+                    <textarea id="stepDataHeaders_1" rows="3" placeholder="e.g., Nama Tender, Nilai Pagu Paket"
+                        required></textarea>
+                    <p>Enter the data headers separated by commas for this step.</p>
+
+                    <label for="stepDataSelectors_1">CSS Selectors (one per line):</label>
+                    <textarea id="stepDataSelectors_1" rows="5"
+                        placeholder="e.g.,&#10;tr:contains('Nama Tender') td strong" required></textarea>
+                    <p>Enter the CSS selectors, one per line, corresponding to each header.</p>
+                </div>
+            </div>
         </div>
 
-        <div>
-            <label for="maxData">Max data to retrieve:</label>
-            <input type="number" id="maxData" value="100" min="1">
-            <p>Specify the maximum number of data entries to scrape.</p>
-        </div>
-
-        <div>
-            <label for="dataPerFile">Max data per file:</label>
-            <input type="number" id="dataPerFile" value="50" min="1">
-            <p>Set how many data entries should be saved per file.</p>
-        </div>
-
-        <h3>Data Headers and Selectors</h3>
-        <label for="dataHeaders">Data Headers (comma-separated):</label>
-        <textarea id="dataHeaders" rows="3"
-            placeholder="e.g., Nama Tender, Nilai Pagu Paket, Lokasi Pekerjaan, Pemenang" required></textarea>
-        <p>Enter the data headers separated by commas. Example: <i>Nama Tender, Nilai Pagu Paket, Lokasi Pekerjaan,
-                Pemenang</i>.</p>
-
-        <label for="dataSelectors">CSS Selectors (one per line):</label>
-        <textarea id="dataSelectors" rows="5"
-            placeholder="e.g.,&#10;tr:contains('Nama Tender') td strong&#10;tr:contains('Nilai Pagu Paket') td:nth-of-type(1)&#10;tr:contains('Lokasi Pekerjaan') ul li&#10;a.nav-link:contains('Pemenang')"
-            required></textarea>
-        <p>Enter the CSS selectors, one per line, corresponding to each header. The number of selectors must match the
-            number of headers.</p>
-
-        <h3>Navigation for Additional Data</h3>
-        <label for="navLinks">Navigation Links (one per line):</label>
-        <textarea id="navLinks" rows="3" placeholder="e.g.,&#10;a.nav-link:contains('Pemenang')" required></textarea>
-        <p>Enter the CSS selectors for navigation links that need to be clicked for additional data.</p>
-
-        <label for="navHeaders">Headers for Data from Navigation Links (comma-separated):</label>
-        <textarea id="navHeaders" rows="3" placeholder="e.g., Nama Pemenang, Nilai Kontrak" required></textarea>
-        <p>Enter the headers for data retrieved after clicking each navigation link.</p>
-
-        <label for="navSelectors">Selectors for Data from Navigation Links (one per line):</label>
-        <textarea id="navSelectors" rows="5" placeholder="e.g.,&#10;div.pemenang-name&#10;div.kontrak-value"
-            required></textarea>
-        <p>Enter the CSS selectors for data retrieved after clicking each navigation link. The number of selectors must
-            match the headers for navigation links.</p>
-
+        <button type="button" id="addStep">Add Scraping Step</button>
         <button type="submit">Start Scraping</button>
     </form>
 
@@ -87,74 +71,103 @@
         </tbody>
     </table>
 
-    <div id="progressContainer" style="margin-top: 20px; display: none;">
-        <label for="progressBar">Processing Progress:</label>
-        <progress id="progressBar" value="0" max="100" style="width: 100%;"></progress>
-        <span id="progressText">0%</span>
-    </div>
-
     <div id="result"></div>
     <div id="errorLog" style="margin-top: 20px; color: red;"></div>
 
     <script>
         const form = document.getElementById('scraperForm');
-        const goToInnerLinksCheckbox = document.getElementById('goToInnerLinks');
-        const innerLinkSelectorContainer = document.getElementById('innerLinkSelectorContainer');
-        const progressContainer = document.getElementById('progressContainer');
-        const progressBar = document.getElementById('progressBar');
-        const progressText = document.getElementById('progressText');
+        const tabsList = document.getElementById('tabsList');
+        const tabsContent = document.getElementById('tabsContent');
+        const addStepButton = document.getElementById('addStep');
         const errorLogDiv = document.getElementById('errorLog');
+        let stepCount = 1;
 
-        // Show or hide the inner link selector input
-        goToInnerLinksCheckbox.addEventListener('change', function () {
+        // Handle "Go to links inside this step" for Step 1
+        document.querySelector('#goToInnerLinks_1').addEventListener('change', function () {
+            const innerLinkSelectorContainer = document.querySelector('.innerLinkSelectorContainer');
             innerLinkSelectorContainer.style.display = this.checked ? 'block' : 'none';
         });
 
+        // Event listener to switch between tabs
+        tabsList.addEventListener('click', (e) => {
+            if (e.target.tagName === 'LI' && e.target.classList.contains('tab')) {
+                const step = e.target.dataset.step;
+
+                // Highlight selected tab
+                document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+                e.target.classList.add('active');
+
+                // Show corresponding tab content
+                document.querySelectorAll('.tabContent').forEach(content => {
+                    content.classList.remove('active');
+                });
+                document.querySelector(`.tabContent[data-step="${step}"]`).classList.add('active');
+            }
+        });
+
+        // Add new step as a tab
+        addStepButton.addEventListener('click', () => {
+            stepCount++;
+
+            // Add new tab
+            const newTab = document.createElement('li');
+            newTab.classList.add('tab');
+            newTab.dataset.step = stepCount;
+            newTab.textContent = `Step ${stepCount}`;
+            tabsList.appendChild(newTab);
+
+            // Add content for the new tab
+            const newTabContent = document.createElement('div');
+            newTabContent.classList.add('tabContent');
+            newTabContent.dataset.step = stepCount;
+            newTabContent.innerHTML = `
+                <h4>Step ${stepCount}</h4>
+                <label for="innerLinkSelector_${stepCount}">Selector for links to navigate to this step:</label>
+                <input type="text" id="innerLinkSelector_${stepCount}" placeholder="e.g., a.link-class" required>
+                <p>Enter the CSS selector for links to navigate to this step.</p>
+    
+                <label for="stepDataHeaders_${stepCount}">Data Headers (comma-separated):</label>
+                <textarea id="stepDataHeaders_${stepCount}" rows="3" placeholder="e.g., Header1, Header2" required></textarea>
+                <p>Enter the data headers separated by commas for this step.</p>
+    
+                <label for="stepDataSelectors_${stepCount}">CSS Selectors (one per line):</label>
+                <textarea id="stepDataSelectors_${stepCount}" rows="5" placeholder="e.g., Selector1&#10;Selector2" required></textarea>
+                <p>Enter the CSS selectors, one per line, corresponding to each header.</p>
+            `;
+            tabsContent.appendChild(newTabContent);
+
+            // Switch to the new tab
+            newTab.click();
+        });
+
+        // Submit form logic
         form.addEventListener('submit', async function (e) {
             e.preventDefault();
-            progressContainer.style.display = 'block';
-            progressBar.value = 0;
-            progressText.textContent = '0%';
 
             const fileInput = document.getElementById('htmlFile');
-            const headersInput = document.getElementById('dataHeaders').value.split(',').map(header => header.trim());
-            const selectorsInput = document.getElementById('dataSelectors').value.split('\n').map(selector => selector.trim());
-            const navLinksInput = document.getElementById('navLinks').value.split('\n').map(link => link.trim());
-            const navHeadersInput = document.getElementById('navHeaders').value.split(',').map(header => header.trim());
-            const navSelectorsInput = document.getElementById('navSelectors').value.split('\n').map(selector => selector.trim());
-
-            if (headersInput.length !== selectorsInput.length) {
-                alert('The number of headers and selectors must match.');
-                return;
-            }
-
-            if (navHeadersInput.length !== navSelectorsInput.length) {
-                alert('The number of navigation headers and selectors must match.');
-                return;
-            }
-
-            const maxData = document.getElementById('maxData').value;
-            const dataPerFile = document.getElementById('dataPerFile').value;
-
             if (fileInput.files.length === 0) {
                 alert('Please select an HTML file to upload.');
                 return;
             }
 
+            const steps = [];
+            document.querySelectorAll('.tabContent').forEach((step, index) => {
+                const stepNumber = index + 1;
+                const headers = step.querySelector(`#stepDataHeaders_${stepNumber}`).value.split(',').map(h => h.trim());
+                const selectors = step.querySelector(`#stepDataSelectors_${stepNumber}`).value.split('\n').map(s => s.trim());
+                const innerLinkSelector = step.querySelector(`#innerLinkSelector_${stepNumber}`)?.value || null;
+
+                if (headers.length !== selectors.length) {
+                    alert(`The number of headers and selectors must match in Step ${stepNumber}.`);
+                    return;
+                }
+
+                steps.push({ headers, selectors, innerLinkSelector });
+            });
+
             const formData = new FormData();
             formData.append('htmlFile', fileInput.files[0]);
-            formData.append('goToInnerLinks', goToInnerLinksCheckbox.checked);
-            formData.append('maxData', maxData);
-            formData.append('dataPerFile', dataPerFile);
-            formData.append('navLinks', JSON.stringify(navLinksInput));
-            formData.append('navHeaders', JSON.stringify(navHeadersInput));
-            formData.append('navSelectors', JSON.stringify(navSelectorsInput));
-
-            const dataSelectors = {};
-            headersInput.forEach((header, index) => {
-                dataSelectors[header] = selectorsInput[index];
-            });
-            formData.append('dataSelectors', JSON.stringify(dataSelectors));
+            formData.append('steps', JSON.stringify(steps));
 
             try {
                 const response = await fetch('/scrape', {
@@ -169,18 +182,16 @@
                 }
 
                 const result = await response.json();
-                result.forEach((progress, index) => {
-                    progressBar.value = progress.percentage;
-                    progressText.textContent = `${progress.percentage}%`;
-                });
+                console.log('Scraping completed successfully.', result);
             } catch (error) {
                 const errorMessage = `Error: ${error.message || 'An unknown error occurred.'}`;
-                console.error(errorMessage); // Log to the browser console
-                errorLogDiv.textContent = errorMessage; // Display error in the error log div
-                errorLogDiv.style.display = 'block'; // Ensure the error log div is visible
+                console.error(errorMessage);
+                errorLogDiv.textContent = errorMessage;
+                errorLogDiv.style.display = 'block';
             }
         });
     </script>
+
 </body>
 
 </html>

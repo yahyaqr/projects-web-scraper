@@ -57,6 +57,57 @@ textarea {
     min-height: 80px;
 }
 
+/* Tabs for steps */
+#stepsTabs {
+    margin-top: 20px;
+    background: #ecf0f1;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+#tabsList {
+    display: flex;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-bottom: 2px solid #ddd;
+    background: #f7f9fa;
+    border-radius: 8px 8px 0 0;
+    overflow: hidden;
+}
+
+#tabsList li {
+    padding: 10px 15px;
+    cursor: pointer;
+    font-weight: 600;
+    color: #34495e;
+    border: 1px solid #ddd;
+    border-bottom: none;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+#tabsList li.active {
+    background-color: #3498db;
+    color: white;
+    border-color: #3498db;
+}
+
+#tabsContent {
+    padding: 15px;
+    background: #ffffff;
+    border: 1px solid #ddd;
+    border-radius: 0 0 8px 8px;
+}
+
+/* Tab content */
+.tabContent {
+    display: none;
+}
+
+.tabContent.active {
+    display: block;
+}
+
 /* Buttons */
 button {
     background-color: #3498db;
@@ -78,39 +129,13 @@ button:active {
     transform: scale(1);
 }
 
-#addSelector {
+#addStep {
     background-color: #2ecc71;
     margin-top: 10px;
 }
 
-#addSelector:hover {
+#addStep:hover {
     background-color: #27ae60;
-}
-
-/* Selector inputs */
-#selectorInputs {
-    margin-top: 15px;
-}
-
-.selectorInput {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 15px;
-}
-
-.selectorInput input {
-    flex: 1;
-}
-
-.selectorInput button {
-    background-color: #e74c3c;
-    padding: 8px 12px;
-    font-size: 0.9rem;
-}
-
-.selectorInput button:hover {
-    background-color: #c0392b;
 }
 
 /* Mockup preview table */
@@ -145,37 +170,6 @@ table tr:last-child td {
     border-bottom: none;
 }
 
-/* Progress bar */
-#progressContainer {
-    margin-top: 20px;
-}
-
-progress {
-    width: 100%;
-    height: 20px;
-    border-radius: 10px;
-    overflow: hidden;
-    appearance: none;
-}
-
-progress::-webkit-progress-bar {
-    background-color: #ecf0f1;
-    border-radius: 10px;
-}
-
-progress::-webkit-progress-value {
-    background-color: #3498db;
-    border-radius: 10px;
-}
-
-#progressText {
-    display: block;
-    margin-top: 5px;
-    text-align: right;
-    font-weight: 600;
-    color: #2c3e50;
-}
-
 /* Results and error log */
 #result {
     margin-top: 20px;
@@ -190,4 +184,20 @@ progress::-webkit-progress-value {
     margin-top: 20px;
     color: #e74c3c;
     font-weight: bold;
+}
+
+/* Animations for smooth transitions */
+.tabContent {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
