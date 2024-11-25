@@ -17,6 +17,7 @@ app.use(express.static('public'));
 // Configure multer for file uploads
 const upload = multer({ dest: 'uploads/' });
 
+// Scrape handler
 app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
     const { goToInnerLinks, innerLinkSelector, maxData, dataPerFile, referer } = req.body;
 
@@ -33,7 +34,6 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
 
     const maxEntries = parseInt(maxData, 10) || 100;
     const chunkSize = parseInt(dataPerFile, 10) || 50;
-    const dynamicReferer = referer || 'https://lpse.pu.go.id/eproc4/lelang/';
 
     try {
         const filePath = req.file.path;
@@ -42,6 +42,7 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
 
         let scrapedData = [];
         const links = [];
+        const dynamicReferer = referer || 'http://localhost'; // Fallback referer
 
         // Collect links if goToInnerLinks is enabled
         if (goToInnerLinks === 'true' || goToInnerLinks === true) {
@@ -50,7 +51,7 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
                 .get()
                 .filter(Boolean)
                 .forEach(link => {
-                    // Convert relative links to absolute links using dynamic referer
+                    // Convert relative links to absolute links
                     if (!link.startsWith('http')) {
                         links.push(new URL(link, dynamicReferer).toString());
                     } else {
@@ -61,9 +62,9 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
 
         let progress = 0;
 
-        // Stream progress updates
+        // Set response headers for streaming JSON
         res.setHeader('Content-Type', 'application/json');
-        res.write(JSON.stringify({ progress: 0 }) + "\n");
+        res.write('[\n'); // Start JSON array
 
         for (const [index, link] of links.entries()) {
             if (scrapedData.length >= maxEntries) break;
@@ -93,22 +94,23 @@ app.post('/scrape', upload.single('htmlFile'), async (req, res) => {
                 }
             } catch (err) {
                 console.error(`Failed to fetch link (${link}):`, err.message);
-                continue;
+                continue; // Skip this link and proceed to the next
             }
 
             // Update progress
             progress = Math.round(((index + 1) / links.length) * 100);
-            res.write(JSON.stringify({ progress }) + "\n");
+            res.write(`${JSON.stringify({ progress })}${index < links.length - 1 ? ',' : ''}\n`);
         }
 
         // Save remaining data
         if (scrapedData.length > 0) saveChunk(scrapedData);
 
         // End progress stream
-        res.write(JSON.stringify({ progress: 100, status: 'completed' }) + "\n");
+        res.write('{"progress":100, "status":"completed"}\n');
+        res.write(']\n'); // End JSON array
         res.end();
 
-        // Save a chunk of data to a file
+        // Function to save a chunk of scraped data to a file
         function saveChunk(data, index = '') {
             const workbook = XLSX.utils.book_new();
             const worksheet = XLSX.utils.json_to_sheet(data);

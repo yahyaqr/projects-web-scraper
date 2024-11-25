@@ -52,6 +52,21 @@
         <p>Enter the CSS selectors, one per line, corresponding to each header. The number of selectors must match the
             number of headers.</p>
 
+        <h3>Navigation for Additional Data</h3>
+        <label for="navLinks">Navigation Links (one per line):</label>
+        <textarea id="navLinks" rows="3" placeholder="e.g.,&#10;a.nav-link:contains('Pemenang')" required></textarea>
+        <p>Enter the CSS selectors for navigation links that need to be clicked for additional data.</p>
+
+        <label for="navHeaders">Headers for Data from Navigation Links (comma-separated):</label>
+        <textarea id="navHeaders" rows="3" placeholder="e.g., Nama Pemenang, Nilai Kontrak" required></textarea>
+        <p>Enter the headers for data retrieved after clicking each navigation link.</p>
+
+        <label for="navSelectors">Selectors for Data from Navigation Links (one per line):</label>
+        <textarea id="navSelectors" rows="5" placeholder="e.g.,&#10;div.pemenang-name&#10;div.kontrak-value"
+            required></textarea>
+        <p>Enter the CSS selectors for data retrieved after clicking each navigation link. The number of selectors must
+            match the headers for navigation links.</p>
+
         <button type="submit">Start Scraping</button>
     </form>
 
@@ -85,7 +100,6 @@
         const form = document.getElementById('scraperForm');
         const goToInnerLinksCheckbox = document.getElementById('goToInnerLinks');
         const innerLinkSelectorContainer = document.getElementById('innerLinkSelectorContainer');
-        const previewTable = document.getElementById('previewTable');
         const progressContainer = document.getElementById('progressContainer');
         const progressBar = document.getElementById('progressBar');
         const progressText = document.getElementById('progressText');
@@ -105,9 +119,17 @@
             const fileInput = document.getElementById('htmlFile');
             const headersInput = document.getElementById('dataHeaders').value.split(',').map(header => header.trim());
             const selectorsInput = document.getElementById('dataSelectors').value.split('\n').map(selector => selector.trim());
+            const navLinksInput = document.getElementById('navLinks').value.split('\n').map(link => link.trim());
+            const navHeadersInput = document.getElementById('navHeaders').value.split(',').map(header => header.trim());
+            const navSelectorsInput = document.getElementById('navSelectors').value.split('\n').map(selector => selector.trim());
 
             if (headersInput.length !== selectorsInput.length) {
                 alert('The number of headers and selectors must match.');
+                return;
+            }
+
+            if (navHeadersInput.length !== navSelectorsInput.length) {
+                alert('The number of navigation headers and selectors must match.');
                 return;
             }
 
@@ -124,12 +146,10 @@
             formData.append('goToInnerLinks', goToInnerLinksCheckbox.checked);
             formData.append('maxData', maxData);
             formData.append('dataPerFile', dataPerFile);
+            formData.append('navLinks', JSON.stringify(navLinksInput));
+            formData.append('navHeaders', JSON.stringify(navHeadersInput));
+            formData.append('navSelectors', JSON.stringify(navSelectorsInput));
 
-            if (goToInnerLinksCheckbox.checked) {
-                formData.append('innerLinkSelector', document.getElementById('innerLinkSelector').value);
-            }
-
-            // Combine headers and selectors into an object
             const dataSelectors = {};
             headersInput.forEach((header, index) => {
                 dataSelectors[header] = selectorsInput[index];
@@ -143,8 +163,9 @@
                 });
 
                 if (!response.ok) {
-                    const errorResponse = await response.json();
-                    throw new Error(errorResponse.error || 'Unknown error occurred.');
+                    const errorText = await response.text();
+                    console.error('Server error response:', errorText);
+                    throw new Error('Failed to fetch valid JSON response from server.');
                 }
 
                 const result = await response.json();
@@ -153,7 +174,10 @@
                     progressText.textContent = `${progress.percentage}%`;
                 });
             } catch (error) {
-                errorLogDiv.textContent = `Error: ${error.message}`;
+                const errorMessage = `Error: ${error.message || 'An unknown error occurred.'}`;
+                console.error(errorMessage); // Log to the browser console
+                errorLogDiv.textContent = errorMessage; // Display error in the error log div
+                errorLogDiv.style.display = 'block'; // Ensure the error log div is visible
             }
         });
     </script>
