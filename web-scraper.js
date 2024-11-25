@@ -23,7 +23,12 @@ function mergeStepData(currentData, newData, stepIndex) {
         const mergedRow = { ...row };
         if (newData[index]) {
             for (const key in newData[index]) {
-                mergedRow[`${key}_step${stepIndex}`] = newData[index][key];
+                // Keep `_link_step` consistent and skip appending `_step${stepIndex}` to other headers
+                if (key.startsWith('_link_step')) {
+                    mergedRow[key] = newData[index][key];
+                } else {
+                    mergedRow[key] = newData[index][key];
+                }
             }
         }
         return mergedRow;

@@ -71,7 +71,7 @@
         </tbody>
     </table>
 
-    <div id="errorLog" style="margin-top: 20px; color: red;"></div>
+    <div id="errorLog"></div>
 
     <script>
         const form = document.getElementById('scraperForm');
@@ -85,11 +85,18 @@
 
         // Logging function
         function logMessage(message, isError = false) {
-            const logEntry = document.createElement('p');
-            logEntry.textContent = message;
-            logEntry.style.color = isError ? 'red' : 'black';
+            const logEntry = document.createElement('div');
+            logEntry.style.padding = '5px';
+            logEntry.style.marginBottom = '5px';
+            logEntry.style.borderLeft = isError ? '4px solid red' : '4px solid green';
+            logEntry.style.backgroundColor = isError ? '#ffe5e5' : '#e6ffe6';
+            logEntry.textContent = `[${new Date().toISOString()}] ${message}`;
             errorLogDiv.appendChild(logEntry);
-            errorLogDiv.scrollTop = errorLogDiv.scrollHeight; // Auto-scroll to the latest message
+
+            // Auto-scroll to the bottom
+            errorLogDiv.scrollTop = errorLogDiv.scrollHeight;
+
+            // Console logging
             console[isError ? 'error' : 'log'](message);
         }
 

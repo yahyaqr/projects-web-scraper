@@ -182,8 +182,10 @@ table tr:last-child td {
 
 #errorLog {
     margin-top: 20px;
-    color: #e74c3c;
-    font-weight: bold;
+    padding: 10px;
+    border: 1px solid #ccc;
+    background: #f9f9f9;
+    height: 300px; overflow-y: auto;
 }
 
 /* Animations for smooth transitions */
